@@ -1,0 +1,37 @@
+Port 22
+ListenAddress 0.0.0.0
+
+HostKey /config/ssh/host_keys/ssh_host_ed25519_key
+HostKey /config/ssh/host_keys/ssh_host_rsa_key
+
+LogLevel INFO
+SyslogFacility AUTH
+
+PermitRootLogin prohibit-password
+PubkeyAuthentication yes
+AuthorizedKeysFile /config/ssh/authorized_keys
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+ChallengeResponseAuthentication no
+PermitEmptyPasswords no
+PermitUserEnvironment no
+UsePAM no
+
+AllowTcpForwarding __ALLOW_TCP_FORWARDING__
+AllowStreamLocalForwarding yes
+AllowAgentForwarding no
+GatewayPorts no
+X11Forwarding no
+PermitTunnel no
+PermitTTY yes
+
+ClientAliveInterval 60
+ClientAliveCountMax 3
+LoginGraceTime 30
+MaxAuthTries 3
+UseDNS no
+PrintMotd no
+PrintLastLog yes
+
+AcceptEnv LANG LC_*
+Subsystem sftp internal-sftp

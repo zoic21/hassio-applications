@@ -1,0 +1,33 @@
+configuration:
+  packages:
+    name: Paquets Debian supplémentaires
+    description: Les paquets absents sont installés avec APT à chaque démarrage.
+  git_user_name:
+    name: Nom d’utilisateur Git
+    description: Nom d’auteur global facultatif pour les commits Git.
+  git_user_email:
+    name: Adresse e-mail Git
+    description: Adresse d’auteur globale facultative pour les commits Git.
+  github_token:
+    name: Jeton GitHub
+    description: Jeton facultatif exposé à GitHub CLI avec GH_TOKEN.
+  ssh_private_key:
+    name: Clé privée du client SSH
+    description: Clé privée facultative pour GitHub et les autres dépôts Git.
+  ssh_public_key:
+    name: Clé publique du client SSH
+    description: Clé publique correspondante facultative.
+  ssh_client_config:
+    name: Configuration du client SSH
+    description: Configuration avancée facultative du client OpenSSH.
+  ssh_known_hosts:
+    name: Hôtes SSH connus supplémentaires
+    description: Clés d’hôte vérifiées facultatives pour les serveurs autres que GitHub.
+  ssh_authorized_keys:
+    name: Clés autorisées du serveur SSH
+    description: Clés publiques autorisées à se connecter à l’App en tant que root.
+  ssh_allow_tcp_forwarding:
+    name: Autoriser les tunnels TCP SSH
+    description: Active les tunnels TCP SSH locaux et inversés.
+network:
+  22/tcp: Serveur SSH (non utilisé par Ingress)
