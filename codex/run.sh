@@ -6,6 +6,9 @@ umask 077
 readonly OPTIONS_DEFAULT=/tmp/codex-options.json
 readonly OPTIONS_PERSISTENT=/data/options.json
 readonly RUNTIME_DIR=/run/codex-app
+readonly CODEX_BIN=/usr/local/bin/codex
+readonly IMAGE_CODEX_STANDALONE=/opt/codex/packages/standalone
+readonly PERSISTENT_CODEX_STANDALONE=/config/codex/packages/standalone
 
 log_info() {
     printf '[Codex] %s\n' "$*"
@@ -93,6 +96,40 @@ configure_storage() {
     if [[ ! -f /config/codex/config.toml ]]; then
         write_file /config/codex/config.toml 0600 $'cli_auth_credentials_store = "file"\napproval_policy = "on-request"\nsandbox_mode = "danger-full-access"'
         log_info "Created the persistent Codex configuration."
+    fi
+}
+
+configure_codex_install() {
+    install -d -m 0700 "$(dirname "${PERSISTENT_CODEX_STANDALONE}")"
+
+    if [[ -L "${PERSISTENT_CODEX_STANDALONE}" && ! -d "${PERSISTENT_CODEX_STANDALONE}" ]]; then
+        log_error "${PERSISTENT_CODEX_STANDALONE} is a broken symlink."
+        exit 1
+    fi
+    if [[ -e "${PERSISTENT_CODEX_STANDALONE}" && ! -d "${PERSISTENT_CODEX_STANDALONE}" ]]; then
+        log_error "${PERSISTENT_CODEX_STANDALONE} exists and is not a directory."
+        exit 1
+    fi
+    if [[ ! -e "${PERSISTENT_CODEX_STANDALONE}" ]]; then
+        if [[ ! -x "${IMAGE_CODEX_STANDALONE}/current/codex" ]]; then
+            log_error "The image does not contain a managed standalone Codex install."
+            exit 1
+        fi
+        ln -s -- "${IMAGE_CODEX_STANDALONE}" "${PERSISTENT_CODEX_STANDALONE}"
+        log_info "Linked the managed standalone Codex installation."
+    fi
+
+    if [[ ! -x "${PERSISTENT_CODEX_STANDALONE}/current/codex" ]]; then
+        log_error "The managed standalone Codex installation is incomplete."
+        exit 1
+    fi
+
+    ln -sfn -- \
+        "${PERSISTENT_CODEX_STANDALONE}/current/codex" \
+        "${CODEX_BIN}"
+    if ! "${CODEX_BIN}" --version; then
+        log_error "The managed standalone Codex command cannot start."
+        exit 1
     fi
 }
 
@@ -273,6 +310,7 @@ handle_shutdown() {
 }
 
 configure_storage
+configure_codex_install
 install_extra_packages
 configure_git
 configure_github_token

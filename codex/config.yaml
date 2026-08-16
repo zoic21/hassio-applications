@@ -1,6 +1,6 @@
 ---
 name: Codex
-version: "0.1.1"
+version: "0.1.2"
 slug: codex
 description: Run OpenAI Codex CLI in an isolated development environment.
 url: https://github.com/zoic21/hassio-applications/tree/main/codex

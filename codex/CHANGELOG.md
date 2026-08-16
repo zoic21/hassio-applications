@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2
+
+- Replace the npm Codex package with the official managed standalone install.
+- Enable `codex remote-control start` without downloading Codex at runtime.
+
 ## 0.1.1
 
 - Fix startup when Debian creates an empty `/root/.ssh` directory in the image.

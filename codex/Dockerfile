@@ -2,6 +2,7 @@ FROM debian:13-slim
 
 ARG BUILD_ARCH
 ARG BUILD_VERSION=dev
+ARG CODEX_INSTALLER_SHA256=ba92dd27e5c06f0d3bbc58bfa4b9cfb6599cd2742fbb1f92a2765e6c07dedb5a
 ARG CODEX_VERSION=0.147.0
 ARG GH_KEYRING_SHA256=6084d5d7bd8e288441e0e94fc6275570895da18e6751f70f057485dc2d1a811b
 ARG TARGETARCH
@@ -79,10 +80,17 @@ RUN install -d -m 0755 /etc/apt/keyrings /etc/apt/sources.list.d \
     && rm -rf /var/lib/apt/lists/* \
     && gh --version
 
-# Install the official OpenAI Codex CLI at a reproducible stable version.
-RUN npm install --global --no-audit --no-fund "@openai/codex@${CODEX_VERSION}" \
-    && codex --version \
-    && npm cache clean --force
+# Install the official standalone Codex CLI at a reproducible stable version.
+# Remote control requires this managed layout instead of the npm package.
+RUN curl -fsSL https://chatgpt.com/codex/install.sh \
+        -o /tmp/codex-install.sh \
+    && echo "${CODEX_INSTALLER_SHA256}  /tmp/codex-install.sh" | sha256sum -c - \
+    && CODEX_HOME=/opt/codex \
+        CODEX_INSTALL_DIR=/usr/local/bin \
+        CODEX_NON_INTERACTIVE=1 \
+        sh /tmp/codex-install.sh --release "${CODEX_VERSION}" \
+    && test "$(codex --version | awk '{print $NF}')" = "${CODEX_VERSION}" \
+    && rm -f /tmp/codex-install.sh
 
 # ttyd is the proven Web terminal used by Home Assistant's official
 # Terminal & SSH App. Upstream publishes static amd64 and aarch64 binaries.

@@ -47,6 +47,19 @@ printenv OPENAI_API_KEY | codex login --with-api-key
 API-key use is billed through the OpenAI API account and is not required for
 ChatGPT device authentication.
 
+## Codex remote control
+
+The App embeds the official managed standalone Codex installation required by
+remote control. After signing in, start it with:
+
+```shell
+codex remote-control start
+```
+
+The standalone release is linked into
+`/config/codex/packages/standalone/current`, which is the fixed location used
+by the remote-control daemon. No Codex download is needed during App startup.
+
 ## Codex permissions inside the container
 
 The generated Codex configuration uses:
@@ -161,7 +174,8 @@ the container is recreated; packages in this option are reinstalled.
 
 The App deliberately keeps `/root` ephemeral and separates persistent state:
 
-- `/config/codex`: Codex configuration, login cache, history, and state
+- `/config/codex`: Codex configuration, login cache, history, state, and the
+  link to the image-managed standalone installation
 - `/config/ssh`: SSH client/server keys, authorized keys, and configuration
 - `/config/gh`: GitHub CLI configuration created by interactive login
 - `/config/git`: global Git configuration
