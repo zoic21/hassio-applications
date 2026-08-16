@@ -1,0 +1,54 @@
+---
+name: Codex
+version: "0.1.0"
+slug: codex
+description: Run OpenAI Codex CLI in an isolated development environment.
+url: https://github.com/zoic21/hassio-applications/tree/main/codex
+arch:
+  - amd64
+  - aarch64
+image: ghcr.io/zoic21/hassio-applications-codex
+stage: experimental
+startup: services
+boot: auto
+init: false
+ingress: true
+ingress_port: 8099
+panel_icon: mdi:code-braces
+panel_title: Codex
+panel_admin: true
+homeassistant_api: false
+hassio_api: false
+auth_api: false
+host_network: false
+map:
+  - type: addon_config
+    read_only: false
+ports:
+  22/tcp: null
+ports_description:
+  22/tcp: SSH server (optional; configure a host port in the Network section)
+options:
+  packages: []
+  git_user_name: ""
+  git_user_email: ""
+  github_token: ""
+  ssh_private_key: ""
+  ssh_public_key: ""
+  ssh_client_config: ""
+  ssh_known_hosts: ""
+  ssh_authorized_keys: []
+  ssh_allow_tcp_forwarding: true
+schema:
+  packages:
+    - "match(^[a-z0-9][a-z0-9+.-]*(?::[a-z0-9]+)?$)"
+  git_user_name: str
+  git_user_email: str
+  github_token: password
+  ssh_private_key: password
+  ssh_public_key: str
+  ssh_client_config: str
+  ssh_known_hosts: str
+  ssh_authorized_keys:
+    - str
+  ssh_allow_tcp_forwarding: bool

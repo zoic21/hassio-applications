@@ -1,0 +1,9 @@
+# shellcheck shell=bash disable=SC1091
+
+if [[ -f /etc/bash.bashrc ]]; then
+    source /etc/bash.bashrc
+fi
+
+if [[ -f /etc/profile.d/codex-app.sh ]]; then
+    source /etc/profile.d/codex-app.sh
+fi
