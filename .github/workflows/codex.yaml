@@ -57,21 +57,31 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [[ ! "${APP_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "Invalid App version: ${APP_VERSION}" >&2
+          decode_string() {
+            jq -er 'if type == "string" then . else error("expected a JSON string") end' <<< "$1"
+          }
+
+          app_description="$(decode_string "${APP_DESCRIPTION}")"
+          app_image="$(decode_string "${APP_IMAGE}")"
+          app_name="$(decode_string "${APP_NAME}")"
+          app_url="$(decode_string "${APP_URL}")"
+          app_version="$(decode_string "${APP_VERSION}")"
+
+          if [[ ! "${app_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid App version: ${app_version}" >&2
             exit 1
           fi
-          if [[ "${APP_IMAGE}" != ghcr.io/zoic21/* ]]; then
-            echo "Unexpected image registry or owner: ${APP_IMAGE}" >&2
+          if [[ "${app_image}" != ghcr.io/zoic21/* ]]; then
+            echo "Unexpected image registry or owner: ${app_image}" >&2
             exit 1
           fi
 
-          echo "description=${APP_DESCRIPTION}" >> "${GITHUB_OUTPUT}"
-          echo "image_name=${APP_IMAGE##*/}" >> "${GITHUB_OUTPUT}"
-          echo "name=${APP_NAME}" >> "${GITHUB_OUTPUT}"
-          echo "registry_prefix=${APP_IMAGE%/*}" >> "${GITHUB_OUTPUT}"
-          echo "url=${APP_URL}" >> "${GITHUB_OUTPUT}"
-          echo "version=${APP_VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "description=${app_description}" >> "${GITHUB_OUTPUT}"
+          echo "image_name=${app_image##*/}" >> "${GITHUB_OUTPUT}"
+          echo "name=${app_name}" >> "${GITHUB_OUTPUT}"
+          echo "registry_prefix=${app_image%/*}" >> "${GITHUB_OUTPUT}"
+          echo "url=${app_url}" >> "${GITHUB_OUTPUT}"
+          echo "version=${app_version}" >> "${GITHUB_OUTPUT}"
 
       - name: Prepare multi-architecture matrix
         id: matrix
