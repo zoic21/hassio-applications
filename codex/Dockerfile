@@ -60,6 +60,7 @@ RUN apt-get update \
         vim \
         wget \
         zip \
+    && rmdir /root/.ssh \
     && rm -rf /var/lib/apt/lists/*
 
 # Install GitHub CLI from GitHub's official APT repository.

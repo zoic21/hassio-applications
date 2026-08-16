@@ -45,6 +45,35 @@ write_file() {
     mv -f "${temporary}" "${destination}"
 }
 
+ensure_persistent_symlink() {
+    local link_path="$1"
+    local target_path="$2"
+    local first_entry
+
+    if [[ -L "${link_path}" ]]; then
+        if [[ "$(readlink -- "${link_path}")" != "${target_path}" ]]; then
+            log_error "${link_path} is not linked to ${target_path}."
+            exit 1
+        fi
+        return
+    fi
+
+    if [[ -d "${link_path}" ]]; then
+        first_entry="$(find "${link_path}" -mindepth 1 -print -quit)"
+        if [[ -n "${first_entry}" ]]; then
+            log_error "${link_path} exists and is not empty; refusing to replace it."
+            exit 1
+        fi
+        rmdir -- "${link_path}"
+        log_info "Removed empty image directory ${link_path}."
+    elif [[ -e "${link_path}" ]]; then
+        log_error "${link_path} exists and is not a directory or symlink."
+        exit 1
+    fi
+
+    ln -s -- "${target_path}" "${link_path}"
+}
+
 configure_storage() {
     install -d -m 0700 \
         "${RUNTIME_DIR}" \
@@ -58,21 +87,8 @@ configure_storage() {
     touch /config/shell/bash_history
     chmod 0600 /config/shell/bash_history
 
-    if [[ -e /work && ! -L /work ]]; then
-        log_error "/work exists but is not the expected persistent symlink."
-        exit 1
-    fi
-    if [[ ! -L /work ]]; then
-        ln -s /data/work /work
-    fi
-
-    if [[ -e /root/.ssh && ! -L /root/.ssh ]]; then
-        log_error "/root/.ssh exists but is not the expected persistent symlink."
-        exit 1
-    fi
-    if [[ ! -L /root/.ssh ]]; then
-        ln -s /config/ssh /root/.ssh
-    fi
+    ensure_persistent_symlink /work /data/work
+    ensure_persistent_symlink /root/.ssh /config/ssh
 
     if [[ ! -f /config/codex/config.toml ]]; then
         write_file /config/codex/config.toml 0600 $'cli_auth_credentials_store = "file"\napproval_policy = "on-request"\nsandbox_mode = "danger-full-access"'

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1
+
+- Fix startup when Debian creates an empty `/root/.ssh` directory in the image.
+- Safely replace empty image directories with persistent storage symlinks.
+
 ## 0.1.0
 
 - Initial experimental release.
