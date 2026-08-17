@@ -14,7 +14,8 @@ https://github.com/zoic21/hassio-applications
 
 ### Codex
 
-Run OpenAI Codex CLI in an isolated Debian 13 development environment through
-a Web terminal integrated with Home Assistant Ingress.
+Run code-server, the official Codex extension, the managed Codex CLI, Remote
+Control, and a fallback Web console in an isolated Debian 13 environment
+integrated with Home Assistant Ingress.
 
 See [Codex documentation](codex/DOCS.md) for configuration and usage.

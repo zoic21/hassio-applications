@@ -13,8 +13,36 @@ After the first successful build, the maintainer must make the GHCR packages
 `aarch64-hassio-applications-codex` public. Home Assistant must be able to pull
 the generic image anonymously.
 
-The Web UI is a root shell in the App container. It starts in `/work`; run
-`codex` to launch the Codex terminal interface.
+The Web UI opens a deliberately small launcher:
+
+- **VS Code** opens code-server on `/work` and is the main V1.5 interface.
+- **Console** opens the independent V1 ttyd root shell. Use it to repair the
+  environment if code-server or the Codex extension fails.
+
+Both interfaces run entirely in the browser. No desktop VS Code client is
+required. The integrated VS Code terminal and the fallback console start in
+`/work` and provide `codex`, `git`, `gh`, and `ssh`.
+
+## Pinned V1.5 components
+
+The experimental combination is intentionally reproducible:
+
+| Component | Version |
+| --- | --- |
+| code-server | `4.132.0` (VS Code `1.132.0`) |
+| official Codex extension | `openai.chatgpt` `26.803.41515` |
+| managed standalone Codex CLI | `0.147.0` |
+| ttyd fallback console | `1.7.7` |
+
+The extension is downloaded as an unmodified, target-specific VSIX from the
+official Visual Studio Marketplace at image build time. It is image-bundled;
+user-installed extensions and all code-server user data are stored under
+`/config/code-server`.
+
+The versions and their architecture-specific SHA-256 values are Docker build
+arguments in `Dockerfile`. Override the version and matching checksums/asset
+URLs together when testing another combination. Do not update only one member
+of this matrix and assume compatibility.
 
 ## First ChatGPT login
 
@@ -47,6 +75,10 @@ printenv OPENAI_API_KEY | codex login --with-api-key
 API-key use is billed through the OpenAI API account and is not required for
 ChatGPT device authentication.
 
+The CLI and IDE extension use the same `CODEX_HOME` and therefore share the
+cached login and `config.toml`. Signing out from either client clears the
+shared cached login. No ChatGPT password belongs in the App options.
+
 ## Codex remote control
 
 The App embeds the official managed standalone Codex installation required by
@@ -54,11 +86,48 @@ remote control. After signing in, start it with:
 
 ```shell
 codex remote-control start
+codex remote-control pair
+codex remote-control stop
 ```
 
-The standalone release is linked into
-`/config/codex/packages/standalone/current`, which is the fixed location used
-by the remote-control daemon. No Codex download is needed during App startup.
+`start` launches the managed App Server daemon, `pair` prints the short-lived
+manual pairing mechanism, and `stop` stops the daemon. Add `--json` when
+machine-readable output is useful. Remote Control uses outbound connections;
+it does not require an inbound Internet port.
+
+The standalone release is installed as real persistent data under
+`/config/codex/packages/standalone`, including the official `current` link
+managed by the installer. No Codex download is needed during App startup. The
+first V1.5 start safely migrates the V0.1.2 whole-directory symlink to a real
+persistent installation without changing `config.toml`, `auth.json`, MCP
+configuration, or sessions.
+
+Remote Control is deliberately not started automatically in V1.5. This keeps
+authentication, enrollment, and session-sharing diagnostics observable.
+
+## code-server and the Codex extension
+
+code-server listens only on `127.0.0.1:1337`. The fallback ttyd console listens
+only on `127.0.0.1:8100`. A small Nginx gateway is the only HTTP service exposed
+to Home Assistant Ingress on container port `8099`; it preserves WebSocket
+upgrades and the `/vscode` and `/console` base paths.
+
+The official Codex extension is experimental on code-server. Automatic
+extension updates are disabled to keep the tested combination stable. The
+extension can still be replaced manually for a controlled experiment, but the
+startup log always reports the image-bundled version.
+
+code-server is started with `--enable-proposed-api openai.chatgpt` because the
+official extension manifest declares the `chatSessionsProvider` and
+`languageModelProxy` proposals. Removing that flag can make the sidebar appear
+installed while its conversation plumbing is unavailable.
+
+The official extension launches its own bundled `codex app-server` process over
+stdio. The standalone `codex remote-control start` command launches a separate
+managed App Server daemon. They share persistent Codex state, but they are not
+the same process and this alone does not prove that a live thread can be owned
+by both clients. Follow the exact validation protocol in
+`V1_5_VALIDATION.md` before claiming shared-session support.
 
 ## Codex permissions inside the container
 
@@ -72,6 +141,10 @@ sandbox_mode = "danger-full-access"
 This deliberately disables Codex's nested filesystem sandbox because the
 dedicated container is already the isolation boundary. Approval prompts remain
 enabled. You can change these values in `/config/codex/config.toml`.
+
+MCP configuration remains in this same file and is shared by CLI, App Server,
+and the IDE extension. Verify it with `codex mcp list`; V1.5 does not introduce
+a separate VS Code MCP configuration.
 
 ## Git identity
 
@@ -175,7 +248,9 @@ the container is recreated; packages in this option are reinstalled.
 The App deliberately keeps `/root` ephemeral and separates persistent state:
 
 - `/config/codex`: Codex configuration, login cache, history, state, and the
-  link to the image-managed standalone installation
+  persistent managed standalone installation
+- `/config/code-server`: settings, workspace state, and user-installed
+  extensions
 - `/config/ssh`: SSH client/server keys, authorized keys, and configuration
 - `/config/gh`: GitHub CLI configuration created by interactive login
 - `/config/git`: global Git configuration
@@ -190,6 +265,24 @@ repositories can therefore increase backup size.
 The root filesystem, `/run`, and packages installed manually are not
 persistent. Home Assistant retains `/data/options.json`, including configured
 secret options, as part of the App data.
+
+## Diagnostics and health checks
+
+Startup logs report the Codex version and standalone path, code-server version,
+Codex extension version, SSH status, and Remote Control daemon status. They do
+not print tokens, credentials, pairing codes, or private keys.
+
+Run the detailed local check from either terminal:
+
+```shell
+codex-app-health
+```
+
+It reports independent JSON statuses for the Ingress gateway, code-server,
+fallback console, Codex standalone install, SSH configuration, and Remote
+Control daemon. The container `HEALTHCHECK` probes only the Ingress gateway at
+`/healthz`; an extension failure or a restarting code-server therefore does
+not make the whole App unhealthy or remove the recovery console.
 
 ## Additional mounts
 
