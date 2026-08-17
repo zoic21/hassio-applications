@@ -1,6 +1,6 @@
 ---
 name: Codex
-version: "0.1.2"
+version: "0.2.0"
 slug: codex
 description: Run OpenAI Codex CLI in an isolated development environment.
 url: https://github.com/zoic21/hassio-applications/tree/main/codex
@@ -12,6 +12,8 @@ stage: experimental
 startup: services
 init: false
 ingress: true
+ingress_port: 8099
+ingress_stream: true
 panel_icon: mdi:code-braces
 panel_title: Codex
 map:

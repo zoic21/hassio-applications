@@ -9,6 +9,8 @@ readonly RUNTIME_DIR=/run/codex-app
 readonly CODEX_BIN=/usr/local/bin/codex
 readonly IMAGE_CODEX_STANDALONE=/opt/codex/packages/standalone
 readonly PERSISTENT_CODEX_STANDALONE=/config/codex/packages/standalone
+readonly CODE_SERVER_USER_DATA=/config/code-server/user-data
+readonly CODE_SERVER_EXTENSIONS=/config/code-server/extensions
 
 log_info() {
     printf '[Codex] %s\n' "$*"
@@ -80,6 +82,12 @@ ensure_persistent_symlink() {
 configure_storage() {
     install -d -m 0700 \
         "${RUNTIME_DIR}" \
+        "${RUNTIME_DIR}/health" \
+        /config/code-server/extensions \
+        /config/code-server/user-data/User \
+        /config/code-server/xdg-cache \
+        /config/code-server/xdg-config \
+        /config/code-server/xdg-data \
         /config/codex \
         /config/gh \
         /config/git \
@@ -100,23 +108,54 @@ configure_storage() {
 }
 
 configure_codex_install() {
+    local image_release image_release_name persistent_release staging
+
     install -d -m 0700 "$(dirname "${PERSISTENT_CODEX_STANDALONE}")"
 
-    if [[ -L "${PERSISTENT_CODEX_STANDALONE}" && ! -d "${PERSISTENT_CODEX_STANDALONE}" ]]; then
-        log_error "${PERSISTENT_CODEX_STANDALONE} is a broken symlink."
+    if [[ ! -x "${IMAGE_CODEX_STANDALONE}/current/codex" ]]; then
+        log_error "The image does not contain a managed standalone Codex install."
         exit 1
     fi
-    if [[ -e "${PERSISTENT_CODEX_STANDALONE}" && ! -d "${PERSISTENT_CODEX_STANDALONE}" ]]; then
-        log_error "${PERSISTENT_CODEX_STANDALONE} exists and is not a directory."
-        exit 1
-    fi
-    if [[ ! -e "${PERSISTENT_CODEX_STANDALONE}" ]]; then
-        if [[ ! -x "${IMAGE_CODEX_STANDALONE}/current/codex" ]]; then
-            log_error "The image does not contain a managed standalone Codex install."
+
+    # V0.1.2 linked /config back to the image. Convert that exact legacy link
+    # to a real persistent managed install without touching auth or config.
+    if [[ -L "${PERSISTENT_CODEX_STANDALONE}" ]]; then
+        staging="${PERSISTENT_CODEX_STANDALONE}.migration.$$"
+        install -d -m 0700 "${staging}"
+        cp -a "${IMAGE_CODEX_STANDALONE}/." "${staging}/"
+        if [[ ! -x "${staging}/current/codex" ]]; then
+            log_error "Could not prepare the persistent standalone migration."
             exit 1
         fi
-        ln -s -- "${IMAGE_CODEX_STANDALONE}" "${PERSISTENT_CODEX_STANDALONE}"
-        log_info "Linked the managed standalone Codex installation."
+        unlink -- "${PERSISTENT_CODEX_STANDALONE}"
+        mv -- "${staging}" "${PERSISTENT_CODEX_STANDALONE}"
+        log_info "Migrated the legacy Codex standalone link to persistent storage."
+    elif [[ -e "${PERSISTENT_CODEX_STANDALONE}" && ! -d "${PERSISTENT_CODEX_STANDALONE}" ]]; then
+        log_error "${PERSISTENT_CODEX_STANDALONE} exists and is not a directory."
+        exit 1
+    elif [[ ! -e "${PERSISTENT_CODEX_STANDALONE}" ]]; then
+        staging="${PERSISTENT_CODEX_STANDALONE}.install.$$"
+        install -d -m 0700 "${staging}"
+        cp -a "${IMAGE_CODEX_STANDALONE}/." "${staging}/"
+        mv -- "${staging}" "${PERSISTENT_CODEX_STANDALONE}"
+        log_info "Installed the managed Codex standalone package in persistent storage."
+    fi
+
+    # Recover an incomplete persistent install from the image release while
+    # preserving a valid user-updated release and its official current link.
+    if [[ ! -x "${PERSISTENT_CODEX_STANDALONE}/current/codex" ]]; then
+        image_release="$(readlink -f -- "${IMAGE_CODEX_STANDALONE}/current")"
+        image_release_name="$(basename -- "${image_release}")"
+        persistent_release="${PERSISTENT_CODEX_STANDALONE}/releases/${image_release_name}"
+        if [[ ! -d "${persistent_release}" ]]; then
+            install -d -m 0700 "${PERSISTENT_CODEX_STANDALONE}/releases"
+            staging="${persistent_release}.install.$$"
+            cp -a -- "${image_release}" "${staging}"
+            mv -- "${staging}" "${persistent_release}"
+        fi
+        ln -sfn -- "releases/${image_release_name}" \
+            "${PERSISTENT_CODEX_STANDALONE}/current"
+        log_info "Repaired the persistent Codex standalone package from the image."
     fi
 
     if [[ ! -x "${PERSISTENT_CODEX_STANDALONE}/current/codex" ]]; then
@@ -124,12 +163,37 @@ configure_codex_install() {
         exit 1
     fi
 
-    ln -sfn -- \
-        "${PERSISTENT_CODEX_STANDALONE}/current/codex" \
-        "${CODEX_BIN}"
+    ln -sfn -- "${PERSISTENT_CODEX_STANDALONE}/current/codex" "${CODEX_BIN}"
     if ! "${CODEX_BIN}" --version; then
         log_error "The managed standalone Codex command cannot start."
         exit 1
+    fi
+    if ! "${CODEX_BIN}" remote-control --help >/dev/null; then
+        log_error "The installed Codex release does not provide remote control."
+        exit 1
+    fi
+
+    printf 'ok\n' > "${RUNTIME_DIR}/health/codex"
+    chmod 0600 "${RUNTIME_DIR}/health/codex"
+}
+
+configure_code_server() {
+    local settings_file="${CODE_SERVER_USER_DATA}/User/settings.json"
+
+    if [[ ! -f "${settings_file}" ]]; then
+        write_file "${settings_file}" 0600 '{
+  "extensions.autoCheckUpdates": false,
+  "extensions.autoUpdate": false,
+  "extensions.supportNodeGlobalNavigator": true,
+  "git.autoRepositoryDetection": "subFolders",
+  "git.openRepositoryInParentFolders": "always",
+  "security.workspace.trust.enabled": false,
+  "telemetry.telemetryLevel": "off",
+  "terminal.integrated.cwd": "/work",
+  "update.mode": "none",
+  "workbench.startupEditor": "none"
+}'
+        log_info "Created persistent code-server settings."
     fi
 }
 
@@ -298,8 +362,85 @@ configure_ssh_server() {
 
 terminate_services() {
     local signal="${1:-TERM}"
+    [[ -n "${CODE_SERVER_SUPERVISOR_PID:-}" ]] && kill -s "${signal}" "${CODE_SERVER_SUPERVISOR_PID}" 2>/dev/null || true
+    [[ -n "${NGINX_PID:-}" ]] && kill -s "${signal}" "${NGINX_PID}" 2>/dev/null || true
     [[ -n "${SSHD_PID:-}" ]] && kill -s "${signal}" "${SSHD_PID}" 2>/dev/null || true
     [[ -n "${TTYD_PID:-}" ]] && kill -s "${signal}" "${TTYD_PID}" 2>/dev/null || true
+}
+
+supervise_code_server() {
+    local child_pid status
+
+    trap '
+        if [[ -n "${child_pid:-}" ]]; then
+            kill -TERM "${child_pid}" 2>/dev/null || true
+            wait "${child_pid}" 2>/dev/null || true
+        fi
+        exit 0
+    ' TERM INT
+
+    while true; do
+        /usr/local/bin/code-server \
+            --auth none \
+            --bind-addr 127.0.0.1:1337 \
+            --disable-telemetry \
+            --disable-update-check \
+            --enable-proposed-api openai.chatgpt \
+            --extensions-dir "${CODE_SERVER_EXTENSIONS}" \
+            --user-data-dir "${CODE_SERVER_USER_DATA}" \
+            /work &
+        child_pid=$!
+
+        if wait "${child_pid}"; then
+            status=0
+        else
+            status=$?
+        fi
+        child_pid=""
+        log_error "code-server stopped unexpectedly (status ${status}); restarting in 5 seconds."
+        sleep 5 &
+        child_pid=$!
+        wait "${child_pid}" || true
+        child_pid=""
+    done
+}
+
+wait_for_http() {
+    local name="$1"
+    local url="$2"
+    local attempt
+
+    for ((attempt = 0; attempt < 40; attempt++)); do
+        if curl --fail --silent --max-time 1 "${url}" >/dev/null 2>&1; then
+            log_info "${name} is ready."
+            return 0
+        fi
+        sleep 0.25
+    done
+    log_error "${name} did not become ready during the startup check."
+    return 1
+}
+
+log_component_versions() {
+    local code_server_version codex_version extension_manifest extension_version
+
+    codex_version="$(${CODEX_BIN} --version | head -n 1)"
+    code_server_version="$(code-server --version | head -n 1)"
+    extension_manifest="/usr/local/lib/code-server/lib/vscode/extensions/openai.chatgpt-${CODEX_EXTENSION_VERSION}/package.json"
+    extension_version="$(jq -r '.version' "${extension_manifest}")"
+
+    log_info "Codex version: ${codex_version}"
+    log_info "Codex standalone path: ${PERSISTENT_CODEX_STANDALONE}/current/codex"
+    log_info "code-server version: ${code_server_version}"
+    log_info "Codex extension version: ${extension_version}"
+}
+
+log_remote_control_status() {
+    if timeout 5 codex app-server daemon version --json >/dev/null 2>&1; then
+        log_info "Remote Control status: running"
+    else
+        log_info "Remote Control status: stopped (start manually with codex remote-control start)"
+    fi
 }
 
 # shellcheck disable=SC2329 # Invoked by the signal trap below.
@@ -311,11 +452,13 @@ handle_shutdown() {
 
 configure_storage
 configure_codex_install
+configure_code_server
 install_extra_packages
 configure_git
 configure_github_token
 configure_ssh_client
 configure_ssh_server
+log_component_versions
 
 SHUTTING_DOWN=false
 trap handle_shutdown TERM INT
@@ -324,21 +467,40 @@ log_info "Starting SSH server on container port 22."
 /usr/sbin/sshd -D -e -f /etc/ssh/sshd_config &
 SSHD_PID=$!
 
-log_info "Starting ttyd Web terminal for Home Assistant Ingress on port 8099."
+log_info "Starting code-server on internal port 1337."
+supervise_code_server &
+CODE_SERVER_SUPERVISOR_PID=$!
+
+log_info "Starting fallback ttyd console on internal port 8100."
 /usr/local/bin/ttyd \
     --writable \
-    --port 8099 \
+    --port 8100 \
+    --base-path /console \
     --cwd /work \
     --terminal-type xterm-256color \
     --client-option titleFixed=Codex \
     tmux -u new-session -A -s codex -c /work /bin/bash -l &
 TTYD_PID=$!
 
+log_info "Starting Home Assistant Ingress gateway on port 8099."
+/usr/sbin/nginx -g 'daemon off;' &
+NGINX_PID=$!
+
+wait_for_http "code-server" http://127.0.0.1:1337/healthz || true
+wait_for_http "fallback console" http://127.0.0.1:8100/console/ || true
+wait_for_http "Ingress gateway" http://127.0.0.1:8099/healthz || true
+log_info "SSH status: running on container port 22"
+log_remote_control_status
+
 if [[ "${SHUTTING_DOWN}" == true ]]; then
     terminate_services TERM
 fi
 
-if wait -n "${SSHD_PID}" "${TTYD_PID}"; then
+if wait -n \
+    "${CODE_SERVER_SUPERVISOR_PID}" \
+    "${NGINX_PID}" \
+    "${SSHD_PID}" \
+    "${TTYD_PID}"; then
     status=1
 else
     status=$?
