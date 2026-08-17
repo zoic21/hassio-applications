@@ -12,7 +12,6 @@ stage: experimental
 startup: services
 init: false
 ingress: true
-ingress_port: 8099
 ingress_stream: true
 panel_icon: mdi:code-braces
 panel_title: Codex
