@@ -107,10 +107,17 @@ authentication, enrollment, and session-sharing diagnostics observable.
 
 ## code-server and the Codex extension
 
-code-server listens only on `127.0.0.1:1337`. The fallback ttyd console listens
-only on `127.0.0.1:8100`. A small Nginx gateway is the only HTTP service exposed
-to Home Assistant Ingress on container port `8099`; it preserves WebSocket
-upgrades and the `/vscode` and `/console` base paths.
+code-server listens only on `127.0.0.1:1337`. The fallback ttyd console is
+bound to loopback and protected by a fresh random internal credential on every
+start. Nginx is the only HTTP service exposed to Home Assistant Ingress on
+container port `8099`; it accepts only the Supervisor Ingress proxy
+(`172.30.32.2`) and local health checks, and preserves WebSocket upgrades plus
+the `/vscode` and `/console` base paths.
+
+VS Code Workspace Trust is enabled. Existing V0.2.0 installations that still
+have the App-generated disabled value are migrated once; users can change the
+setting afterwards. Nginx access logs deliberately omit query strings and
+authorization headers.
 
 The official Codex extension is experimental on code-server. Automatic
 extension updates are disabled to keep the tested combination stable. The
@@ -332,6 +339,14 @@ The App does **not** request privileged mode, Docker API/socket access, host
 networking, host devices, Home Assistant configuration, Home Assistant API, or
 Supervisor API access. The Ingress terminal is limited to Home Assistant
 administrators.
+
+No deployment credential is baked into the image. OpenSSH keys that Debian
+temporarily generates during package installation are deleted in the same
+build layer. On first start, sshd instead creates a unique host key pair under
+`/config/ssh/host_keys`; those keys then remain stable only for that App
+installation. Codex authentication, GitHub CLI authentication, user SSH keys,
+and the random internal console credential are likewise created or supplied at
+runtime, never shared between published image users.
 
 ## Maintainer release process
 

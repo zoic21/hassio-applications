@@ -11,6 +11,9 @@ readonly IMAGE_CODEX_STANDALONE=/opt/codex/packages/standalone
 readonly PERSISTENT_CODEX_STANDALONE=/config/codex/packages/standalone
 readonly CODE_SERVER_USER_DATA=/config/code-server/user-data
 readonly CODE_SERVER_EXTENSIONS=/config/code-server/extensions
+readonly NGINX_CONFIG="${RUNTIME_DIR}/nginx.conf"
+readonly NGINX_TEMPLATE=/usr/local/share/codex-app/nginx.conf
+TTYD_PASSWORD=""
 
 log_info() {
     printf '[Codex] %s\n' "$*"
@@ -179,6 +182,8 @@ configure_codex_install() {
 
 configure_code_server() {
     local settings_file="${CODE_SERVER_USER_DATA}/User/settings.json"
+    local trust_marker="/config/code-server/.workspace-trust-v1"
+    local temporary
 
     if [[ ! -f "${settings_file}" ]]; then
         write_file "${settings_file}" 0600 '{
@@ -187,7 +192,7 @@ configure_code_server() {
   "extensions.supportNodeGlobalNavigator": true,
   "git.autoRepositoryDetection": "subFolders",
   "git.openRepositoryInParentFolders": "always",
-  "security.workspace.trust.enabled": false,
+  "security.workspace.trust.enabled": true,
   "telemetry.telemetryLevel": "off",
   "terminal.integrated.cwd": "/work",
   "update.mode": "none",
@@ -195,6 +200,33 @@ configure_code_server() {
 }'
         log_info "Created persistent code-server settings."
     fi
+
+    # V0.2.0 disabled Workspace Trust in its generated settings. Migrate that
+    # insecure default once, without preventing a user from changing it later.
+    if [[ ! -e "${trust_marker}" ]]; then
+        if jq -e '."security.workspace.trust.enabled" == false' \
+            "${settings_file}" >/dev/null 2>&1; then
+            temporary="$(mktemp "${settings_file}.tmp.XXXXXX")"
+            jq '."security.workspace.trust.enabled" = true' \
+                "${settings_file}" > "${temporary}"
+            chmod 0600 "${temporary}"
+            mv -f "${temporary}" "${settings_file}"
+            log_info "Enabled VS Code Workspace Trust for the security migration."
+        fi
+        write_file "${trust_marker}" 0600 'Workspace Trust migration completed.'
+    fi
+}
+
+configure_nginx() {
+    local ttyd_authorization
+
+    TTYD_PASSWORD="$(od -An -N32 -tx1 /dev/urandom | tr -d '[:space:]')"
+    readonly TTYD_PASSWORD
+    ttyd_authorization="$(printf 'codex-internal:%s' "${TTYD_PASSWORD}" | base64 -w 0)"
+    sed "s|__TTYD_AUTHORIZATION__|Basic ${ttyd_authorization}|g" \
+        "${NGINX_TEMPLATE}" > "${NGINX_CONFIG}"
+    chmod 0600 "${NGINX_CONFIG}"
+    /usr/sbin/nginx -t -c "${NGINX_CONFIG}"
 }
 
 install_extra_packages() {
@@ -453,6 +485,7 @@ handle_shutdown() {
 configure_storage
 configure_codex_install
 configure_code_server
+configure_nginx
 install_extra_packages
 configure_git
 configure_github_token
@@ -473,6 +506,9 @@ CODE_SERVER_SUPERVISOR_PID=$!
 
 log_info "Starting fallback ttyd console on internal port 8100."
 /usr/local/bin/ttyd \
+    --debug 3 \
+    --interface lo \
+    --credential "codex-internal:${TTYD_PASSWORD}" \
     --writable \
     --port 8100 \
     --base-path /console \
@@ -483,12 +519,12 @@ log_info "Starting fallback ttyd console on internal port 8100."
 TTYD_PID=$!
 
 log_info "Starting Home Assistant Ingress gateway on port 8099."
-/usr/sbin/nginx -g 'daemon off;' &
+/usr/sbin/nginx -c "${NGINX_CONFIG}" -g 'daemon off;' &
 NGINX_PID=$!
 
 wait_for_http "code-server" http://127.0.0.1:1337/healthz || true
-wait_for_http "fallback console" http://127.0.0.1:8100/console/ || true
 wait_for_http "Ingress gateway" http://127.0.0.1:8099/healthz || true
+wait_for_http "fallback console" http://127.0.0.1:8099/health/console || true
 log_info "SSH status: running on container port 22"
 log_remote_control_status
 

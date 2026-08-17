@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.1
+
+- Restrict the Ingress gateway to the Home Assistant proxy and local health
+  checks.
+- Bind ttyd to loopback and protect it with a fresh internal credential on
+  every start.
+- Remove build-generated SSH host keys and code-server's temporary password
+  from the final image layers.
+- Apply Debian security updates during each image build.
+- Enable VS Code Workspace Trust, including a one-time migration from the
+  V0.2.0 generated setting.
+- Sanitize Nginx access logs so query strings and authorization data are never
+  recorded.
+- Pin GitHub Actions by immutable commit and scan every published image for
+  leaked secrets and high-severity dependency vulnerabilities.
+
 ## 0.2.0
 
 - Add pinned code-server as the main browser IDE through Home Assistant Ingress.

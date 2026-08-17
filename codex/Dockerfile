@@ -34,9 +34,12 @@ ENV CODEX_HOME=/config/codex \
     XDG_CONFIG_HOME=/config/code-server/xdg-config \
     XDG_DATA_HOME=/config/code-server/xdg-data
 
-# Debian security updates are resolved when the App image is built.
+# Debian security updates are resolved when the App image is built. Debian's
+# openssh-server package creates host keys during installation; remove them in
+# this same layer because runtime SSH uses unique persistent keys in /config.
 # hadolint ignore=DL3008
 RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
     && apt-get install -y --no-install-recommends \
         bash-completion \
         bubblewrap \
@@ -75,6 +78,13 @@ RUN apt-get update \
         wget \
         zip \
     && rmdir /root/.ssh \
+    && rm -f \
+        /etc/ssh/ssh_host_ecdsa_key \
+        /etc/ssh/ssh_host_ecdsa_key.pub \
+        /etc/ssh/ssh_host_ed25519_key \
+        /etc/ssh/ssh_host_ed25519_key.pub \
+        /etc/ssh/ssh_host_rsa_key \
+        /etc/ssh/ssh_host_rsa_key.pub \
     && rm -rf /var/lib/apt/lists/*
 
 # Install GitHub CLI from GitHub's official APT repository.
@@ -120,7 +130,7 @@ RUN case "${TARGETARCH}" in \
     && install -m 0644 /usr/local/lib/code-server/LICENSE \
         /usr/share/doc/code-server/copyright \
     && test "$(HOME=/tmp XDG_CACHE_HOME=/tmp/code-server/cache XDG_CONFIG_HOME=/tmp/code-server/config XDG_DATA_HOME=/tmp/code-server/data code-server --version | awk '/^[0-9]+\.[0-9]+\.[0-9]+/ { print $1; exit }')" = "${CODE_SERVER_VERSION}" \
-    && rm -f /tmp/code-server.tar.gz
+    && rm -rf /tmp/code-server /tmp/code-server.tar.gz
 
 # The official Codex extension is not available from OpenVSX. Download the
 # pinned, target-specific VSIX from the official Visual Studio Marketplace,
@@ -198,7 +208,7 @@ RUN case "${TARGETARCH}" in \
 COPY github_known_hosts /etc/ssh/ssh_known_hosts
 COPY health.sh /usr/local/bin/codex-app-health
 COPY launcher/ /usr/local/share/codex-app/launcher/
-COPY nginx.conf /etc/nginx/nginx.conf
+COPY nginx.conf /usr/local/share/codex-app/nginx.conf
 COPY profile.sh /etc/profile.d/codex-app.sh
 COPY root_bash_profile /root/.bash_profile
 COPY root_bashrc /root/.bashrc
@@ -207,12 +217,12 @@ COPY sshd_config /usr/local/share/codex-app/sshd_config
 COPY third_party/ttyd-LICENSE /usr/share/doc/ttyd/copyright
 
 RUN chmod 0644 \
-        /etc/nginx/nginx.conf \
         /etc/profile.d/codex-app.sh \
         /etc/ssh/ssh_known_hosts \
         /root/.bash_profile \
         /root/.bashrc \
         /usr/share/doc/ttyd/copyright \
+        /usr/local/share/codex-app/nginx.conf \
         /usr/local/share/codex-app/sshd_config \
     && chmod 0755 \
         /usr/local/bin/codex-app-health \
@@ -221,7 +231,8 @@ RUN chmod 0644 \
         /config \
         /data \
         /run/sshd \
-        /usr/local/share/codex-app
+        /usr/local/share/codex-app \
+    && /usr/sbin/nginx -t -c /usr/local/share/codex-app/nginx.conf
 
 EXPOSE 22 8099
 

@@ -21,7 +21,7 @@ status_from_command() {
 
 container_status="$(status_from_http http://127.0.0.1:8099/healthz)"
 code_server_status="$(status_from_http http://127.0.0.1:1337/healthz)"
-console_status="$(status_from_http http://127.0.0.1:8100/console/)"
+console_status="$(status_from_http http://127.0.0.1:8099/health/console)"
 codex_status="$(status_from_command test -x /config/codex/packages/standalone/current/codex)"
 ssh_status="$(status_from_command /usr/sbin/sshd -t -f /etc/ssh/sshd_config)"
 
