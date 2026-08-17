@@ -37,11 +37,11 @@ jobs:
       version: ${{ steps.metadata.outputs.version }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Read App metadata
         id: info
-        uses: home-assistant/actions/helpers/info@master
+        uses: home-assistant/actions/helpers/info@a7c616ce81ccda50150bf1595786c71b1883fabb
         with:
           path: ./codex
 
@@ -85,7 +85,7 @@ jobs:
 
       - name: Prepare multi-architecture matrix
         id: matrix
-        uses: home-assistant/builder/actions/prepare-multi-arch-matrix@2026.06.0
+        uses: home-assistant/builder/actions/prepare-multi-arch-matrix@4de35182ce1e329181bffcbcc84d33db5e2c7e10 # 2026.06.0
         with:
           architectures: ${{ steps.info.outputs.architectures }}
           image-name: ${{ steps.metadata.outputs.image_name }}
@@ -104,12 +104,12 @@ jobs:
       matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Build image
-        uses: home-assistant/builder/actions/build-image@2026.06.0
+        uses: home-assistant/builder/actions/build-image@4de35182ce1e329181bffcbcc84d33db5e2c7e10 # 2026.06.0
         with:
           arch: ${{ matrix.arch }}
           cache-gha-scope: codex-${{ matrix.arch }}
@@ -139,7 +139,7 @@ jobs:
       packages: write
     steps:
       - name: Publish manifest
-        uses: home-assistant/builder/actions/publish-multi-arch-manifest@2026.06.0
+        uses: home-assistant/builder/actions/publish-multi-arch-manifest@4de35182ce1e329181bffcbcc84d33db5e2c7e10 # 2026.06.0
         with:
           architectures: ${{ needs.prepare.outputs.architectures }}
           container-registry-password: ${{ secrets.GITHUB_TOKEN }}
@@ -148,3 +148,33 @@ jobs:
             ${{ needs.prepare.outputs.version }}
             latest
           registry-prefix: ${{ needs.prepare.outputs.registry_prefix }}
+
+  security:
+    name: Scan published image
+    needs:
+      - prepare
+      - manifest
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: read
+    timeout-minutes: 20
+    steps:
+      - name: Reject secrets in image layers
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          exit-code: "1"
+          image-ref: ${{ needs.prepare.outputs.registry_prefix }}/${{ needs.prepare.outputs.image_name }}:${{ needs.prepare.outputs.version }}
+          scanners: secret
+
+      # Report dependency findings without blocking this experimental release.
+      # Secret leakage remains blocking; dependency remediation stays visible
+      # while pinned code-server/Codex compatibility is evaluated deliberately.
+      - name: Report fixable high-severity vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          exit-code: "0"
+          ignore-unfixed: true
+          image-ref: ${{ needs.prepare.outputs.registry_prefix }}/${{ needs.prepare.outputs.image_name }}:${{ needs.prepare.outputs.version }}
+          scanners: vuln
+          severity: HIGH,CRITICAL
