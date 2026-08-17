@@ -119,7 +119,7 @@ RUN case "${TARGETARCH}" in \
     && ln -s /usr/local/lib/code-server/bin/code-server /usr/local/bin/code-server \
     && install -m 0644 /usr/local/lib/code-server/LICENSE \
         /usr/share/doc/code-server/copyright \
-    && test "$(HOME=/tmp code-server --version | head -n 1)" = "${CODE_SERVER_VERSION}" \
+    && test "$(HOME=/tmp code-server --version | awk 'NR == 1 { print $1 }')" = "${CODE_SERVER_VERSION}" \
     && rm -f /tmp/code-server.tar.gz
 
 # The official Codex extension is not available from OpenVSX. Download the
